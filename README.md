@@ -22,23 +22,19 @@ git clone <url-du-repo>
 cd <nom-du-repo>
 ```
 
-2. **Créer un environnement virtuel**
+2. **Créer l'environnement virtuel et installer les dépendances**
 
 ```bash
-# Création de l'environnement virtuel
-python -m venv venv
-
-# Activation de l'environnement virtuel
-# Sur Windows
-venv\Scripts\activate
-# Sur macOS/Linux
-source venv/bin/activate
+uv sync
 ```
 
-3. **Installer les dépendances**
+3. **Activer l'environnement virtuel** (optionnel, `uv run` s'en charge automatiquement)
 
 ```bash
-pip install -r requirements.txt
+# Sur Windows
+.venv\Scripts\activate
+# Sur macOS/Linux
+source .venv/bin/activate
 ```
 
 4. **Configurer la clé API**

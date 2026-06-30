@@ -143,10 +143,12 @@ def load_dataset() -> EvaluationDataset:
 def run_evaluation():
     dataset = load_dataset()
 
+    # mistral-small-latest respecte mal le JSON strict attendu par RAGAS pour les
+    # métriques à verdict (faithfulness/context_precision/context_recall), ce qui
+    # fait échouer le parsing même après les retries de RAGAS et renvoie NaN.
+    # mistral-large-latest est plus fiable sur ce point, donc on l'utilise pour
+    # toutes les métriques juges.
     judge_llm = LangchainLLMWrapper(
-        _MistralWithRateRetry(model="mistral-small-latest", temperature=0)
-    )
-    judge_llm_large = LangchainLLMWrapper(
         _MistralWithRateRetry(model="mistral-large-latest", temperature=0)
     )
     judge_embeddings = LangchainEmbeddingsWrapper(
@@ -160,7 +162,7 @@ def run_evaluation():
     context_recall = ContextRecall()
     context_recall.llm = judge_llm
     answer_relevancy = AnswerRelevancy(embeddings=judge_embeddings)
-    answer_relevancy.llm = judge_llm_large
+    answer_relevancy.llm = judge_llm
 
     result = evaluate(
         dataset=dataset,

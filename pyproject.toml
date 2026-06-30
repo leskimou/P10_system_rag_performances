@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "streamlit==1.44.1",
-    "mistralai==0.4.2",
+    "mistralai>=2.0.0,!=2.4.6",
     "langchain==0.3.23",
     "faiss-cpu==1.10.0",
     "PyPDF2==3.0.1",
@@ -22,4 +22,7 @@ dependencies = [
     "tqdm",
     "ragas>=0.4.3",
     "langchain-mistralai>=0.2.12",
+    "pydantic>=2.9",
+    "pydantic-ai-slim[mistral]",
+    "logfire",
 ]

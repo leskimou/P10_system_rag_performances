@@ -5,12 +5,16 @@ Centralise la logique utilisée par MistralChat.py afin que les scripts
 d'évaluation (ans_cont_recup_ragas.py, evaluate_ragas.py) puissent appeler le
 même pipeline sans dépendre de l'UI.
 """
-from typing import Dict, List, Tuple
+import logging
+from typing import List, Tuple
 
-from mistralai.client import MistralClient
-from mistralai.models.chat_completion import ChatMessage
+import logfire
+from pydantic import ValidationError
+from pydantic_ai import Agent
+from pydantic_ai.models.mistral import MistralModel
 
-from .config import MISTRAL_API_KEY, MODEL_NAME, SEARCH_K
+from .config import MODEL_NAME, SEARCH_K
+from .schemas import RAGAnswer, RAGQuery, SearchResult
 from .vector_store import VectorStoreManager
 
 SYSTEM_PROMPT = """Tu es 'NBA Analyst AI', un assistant expert sur la ligue de basketball NBA.
@@ -25,15 +29,15 @@ QUESTION DU FAN:
 
 RÉPONSE DE L'ANALYSTE NBA:"""
 
-_client: MistralClient | None = None
+_agent: Agent | None = None
 _vector_store_manager: VectorStoreManager | None = None
 
 
-def get_client() -> MistralClient:
-    global _client
-    if _client is None:
-        _client = MistralClient(api_key=MISTRAL_API_KEY)
-    return _client
+def get_agent() -> Agent:
+    global _agent
+    if _agent is None:
+        _agent = Agent(MistralModel(MODEL_NAME), output_type=RAGAnswer)
+    return _agent
 
 
 def get_vector_store_manager() -> VectorStoreManager:
@@ -43,31 +47,37 @@ def get_vector_store_manager() -> VectorStoreManager:
     return _vector_store_manager
 
 
-def format_context(search_results: List[Dict[str, any]]) -> str:
+def format_context(search_results: List[SearchResult]) -> str:
     if not search_results:
         return "Aucune information pertinente trouvée dans la base de connaissances pour cette question."
     return "\n\n---\n\n".join(
-        f"Source: {res['metadata'].get('source', 'Inconnue')} (Score: {res['score']:.1f}%)\nContenu: {res['text']}"
+        f"Source: {res.metadata.source} (Score: {res.score:.1f}%)\nContenu: {res.text}"
         for res in search_results
     )
 
 
-def search_context(question: str, k: int = SEARCH_K) -> List[Dict[str, any]]:
-    return get_vector_store_manager().search(question, k=k)
+def search_context(question: str, k: int = SEARCH_K) -> List[SearchResult]:
+    with logfire.span("search_context", question=question, k=k):
+        return get_vector_store_manager().search(question, k=k)
 
 
-def generate_answer(question: str, search_results: List[Dict[str, any]]) -> str:
+def generate_answer(question: str, search_results: List[SearchResult]) -> str:
+    try:
+        query = RAGQuery(question=question)
+    except ValidationError as e:
+        logging.error(f"Question invalide, réponse non générée: {e}")
+        return "Désolé, votre question n'a pas pu être traitée."
+
     final_prompt = SYSTEM_PROMPT.format(
-        context_str=format_context(search_results), question=question
+        context_str=format_context(search_results), question=query.question
     )
-    response = get_client().chat(
-        model=MODEL_NAME,
-        messages=[ChatMessage(role="user", content=final_prompt)],
-        temperature=0.1,
-    )
-    if response.choices:
-        return response.choices[0].message.content
-    return "Désolé, je n'ai pas pu générer de réponse valide pour le moment."
+    try:
+        with logfire.span("generate_answer", question=query.question):
+            result = get_agent().run_sync(final_prompt)
+        return result.output.answer
+    except Exception as e:
+        logging.error(f"Erreur lors de la génération de la réponse par l'agent: {e}")
+        return "Désolé, je n'ai pas pu générer de réponse valide pour le moment."
 
 
 def ask_with_context(question: str, k: int = SEARCH_K) -> Tuple[str, List[str]]:
@@ -76,7 +86,8 @@ def ask_with_context(question: str, k: int = SEARCH_K) -> Tuple[str, List[str]]:
     Retourne la réponse générée et la liste des textes de contexte récupérés,
     au format attendu par les datasets d'évaluation RAGAS.
     """
-    search_results = search_context(question, k=k)
-    answer = generate_answer(question, search_results)
-    contexts = [res["text"] for res in search_results]
-    return answer, contexts
+    with logfire.span("ask_with_context", question=question):
+        search_results = search_context(question, k=k)
+        answer = generate_answer(question, search_results)
+        contexts = [res.text for res in search_results]
+        return answer, contexts

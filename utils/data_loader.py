@@ -9,6 +9,48 @@ import logging
 import numpy as np
 from tqdm import tqdm # Ajout de tqdm
 
+import re
+import unicodedata
+
+import logfire
+from pydantic import ValidationError
+
+from .schemas import CleanedDocument, DocumentMetadata, RawDocument
+
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+_MULTI_SPACES_RE = re.compile(r"[ \t]{2,}")
+_MULTI_BLANK_LINES_RE = re.compile(r"\n{3,}")
+
+
+def clean_text(text: str) -> str:
+    """Normalise le texte extrait avant chunking (espaces, BOM, caractères de contrôle)."""
+    text = text.replace("﻿", "")
+    text = unicodedata.normalize("NFKC", text)
+    text = _CONTROL_CHARS_RE.sub("", text)
+    text = _MULTI_SPACES_RE.sub(" ", text)
+    text = _MULTI_BLANK_LINES_RE.sub("\n\n", text)
+    return text.strip()
+
+
+def build_cleaned_document(page_content: str, metadata: dict) -> CleanedDocument | None:
+    """Valide le contenu brut, le nettoie, puis valide le résultat final.
+
+    Retourne None (et logue une erreur) si le document est vide ou invalide
+    à n'importe quelle étape, plutôt que de faire échouer tout le pipeline.
+    """
+    try:
+        raw = RawDocument(page_content=page_content, metadata=DocumentMetadata(**metadata))
+    except ValidationError as e:
+        logging.error(f"Document brut invalide ignoré ({metadata.get('source', '?')}): {e}")
+        return None
+
+    cleaned_text = clean_text(raw.page_content)
+    try:
+        return CleanedDocument(page_content=cleaned_text, metadata=raw.metadata)
+    except ValidationError as e:
+        logging.error(f"Document nettoyé invalide ignoré ({metadata.get('source', '?')}): {e}")
+        return None
+
 # --- Importations pour OCR ---
 try:
     import fitz  # PyMuPDF
@@ -208,12 +250,12 @@ def download_and_extract_zip(url: str, output_dir: str) -> bool:
         logging.error(f"Erreur inattendue lors du téléchargement/extraction: {e}")
         return False
 
-def load_and_parse_files(input_dir: str) -> List[Dict[str, any]]:
+def load_and_parse_files(input_dir: str) -> List[CleanedDocument]:
     """
     Charge et parse récursivement les fichiers d'un répertoire.
     Retourne une liste de dictionnaires, chacun représentant un document.
     """
-    documents = []
+    documents: List[CleanedDocument] = []
     input_path = Path(input_dir)
     if not input_path.is_dir():
         logging.error(f"Le répertoire d'entrée '{input_dir}' n'existe pas.")
@@ -228,49 +270,48 @@ def load_and_parse_files(input_dir: str) -> List[Dict[str, any]]:
             
             logging.debug(f"Traitement du fichier: {relative_path} (Dossier source: {source_folder})")
 
-            extracted_content = None
-            if ext == ".pdf":
-                extracted_content = extract_text_from_pdf(str(file_path))
-            elif ext == ".docx":
-                extracted_content = extract_text_from_docx(str(file_path))
-            elif ext == ".txt":
-                extracted_content = extract_text_from_txt(str(file_path))
-            elif ext == ".csv":
-                extracted_content = extract_text_from_csv(str(file_path))
-            elif ext in [".xlsx", ".xls"]:
-                extracted_content = extract_text_from_excel(str(file_path))
-            # Suppression de la gestion des fichiers HTML
-            else:
-                logging.warning(f"Type de fichier non supporté ignoré: {relative_path}")
-                continue
+            with logfire.span("extract_and_clean_document", file=str(relative_path)):
+                extracted_content = None
+                if ext == ".pdf":
+                    extracted_content = extract_text_from_pdf(str(file_path))
+                elif ext == ".docx":
+                    extracted_content = extract_text_from_docx(str(file_path))
+                elif ext == ".txt":
+                    extracted_content = extract_text_from_txt(str(file_path))
+                elif ext == ".csv":
+                    extracted_content = extract_text_from_csv(str(file_path))
+                elif ext in [".xlsx", ".xls"]:
+                    extracted_content = extract_text_from_excel(str(file_path))
+                # Suppression de la gestion des fichiers HTML
+                else:
+                    logging.warning(f"Type de fichier non supporté ignoré: {relative_path}")
+                    continue
 
-            if not extracted_content:
-                logging.warning(f"Aucun contenu n'a pu être extrait de {relative_path}")
-                continue
-            
-            # Si c'est un dictionnaire (plusieurs feuilles Excel), créer un doc par feuille
-            if isinstance(extracted_content, dict):
-                for sheet_name, text in extracted_content.items():
-                    documents.append({
-                        "page_content": text,
-                        "metadata": {
+                if not extracted_content:
+                    logging.warning(f"Aucun contenu n'a pu être extrait de {relative_path}")
+                    continue
+
+                # Si c'est un dictionnaire (plusieurs feuilles Excel), créer un doc par feuille
+                if isinstance(extracted_content, dict):
+                    for sheet_name, text in extracted_content.items():
+                        cleaned = build_cleaned_document(text, {
                             "source": f"{str(relative_path)} (Feuille: {sheet_name})",
                             "filename": file_path.name,
                             "sheet": sheet_name,
                             "category": source_folder,
                             "full_path": str(file_path.resolve())
-                        }
-                    })
-            else: # Pour tous les autres types de fichiers
-                 documents.append({
-                    "page_content": extracted_content,
-                    "metadata": {
+                        })
+                        if cleaned is not None:
+                            documents.append(cleaned)
+                else: # Pour tous les autres types de fichiers
+                    cleaned = build_cleaned_document(extracted_content, {
                         "source": str(relative_path),
                         "filename": file_path.name,
                         "category": source_folder,
                         "full_path": str(file_path.resolve())
-                    }
-                })
+                    })
+                    if cleaned is not None:
+                        documents.append(cleaned)
 
     logging.info(f"{len(documents)} documents chargés et parsés.")
     return documents

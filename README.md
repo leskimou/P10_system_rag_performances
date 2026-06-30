@@ -121,6 +121,20 @@ Gère la base de données SQLite pour les interactions :
 - Stockage des feedbacks utilisateurs
 - Récupération des statistiques
 
+### `utils/schemas.py`
+
+Définit tous les modèles Pydantic du pipeline RAG.
+
+## Pydantic & Pydantic AI dans le projet
+
+Le pipeline RAG s'appuie sur l'écosystème Pydantic à chaque étape, du chargement des documents jusqu'à la génération de la réponse :
+
+- **Validation des données à chaque frontière du pipeline** (`utils/schemas.py`) : un modèle dédié par étape — `RawDocument` → `CleanedDocument` → `Chunk` → `EmbeddedChunk` → `SearchResult` — remplace les `dict` non typés qui circulaient auparavant entre `data_loader.py`, `vector_store.py` et `chatbot.py`. Chaque modèle impose ses propres contraintes (ex. `page_content` non vide via `Field(min_length=1)`), ce qui fait échouer tôt et explicitement un document mal formé plutôt que de propager une erreur silencieuse plus loin dans le pipeline.
+- **Échecs gérés sans interrompre tout le pipeline** : `build_cleaned_document()` (`utils/data_loader.py`) capture les `ValidationError` pour ignorer et logguer un document invalide sans stopper l'indexation des autres documents.
+- **Validation des entrées utilisateur** : `RAGQuery` (`utils/schemas.py`) valide et nettoie la question posée (longueur, non-vide) avant qu'elle ne soit envoyée au modèle, dans `generate_answer()` (`utils/chatbot.py`).
+- **Sortie structurée du LLM avec Pydantic AI** : le chatbot utilise `pydantic_ai.Agent(MistralModel(...), output_type=RAGAnswer)` (`utils/chatbot.py`) pour forcer le modèle Mistral à renvoyer une réponse conforme au schéma `RAGAnswer`, plutôt qu'un texte libre à parser manuellement.
+- **Observabilité avec Pydantic Logfire** : `utils/observability.py` configure Logfire (`logfire.instrument_pydantic_ai()`) pour tracer automatiquement les appels de l'agent Pydantic AI ; `utils/chatbot.py` ajoute des spans (`search_context`, `generate_answer`, `ask_with_context`) pour suivre chaque étape du pipeline RAG en local, sans compte cloud.
+
 ## Personnalisation
 
 Vous pouvez personnaliser l'application en modifiant les paramètres dans `utils/config.py` :

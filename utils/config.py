@@ -38,3 +38,8 @@ DATABASE_URL = f"sqlite:///{DATABASE_FILE}" # URL pour SQLAlchemy
 # --- Configuration de l'Application ---
 APP_TITLE = "NBA Analyst AI"
 NAME = "NBA" # Nom à personnaliser dans l'interface
+
+# --- Observabilité ---
+from .observability import configure_logfire
+
+configure_logfire()

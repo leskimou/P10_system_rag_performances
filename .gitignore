@@ -42,7 +42,11 @@ logs/
 *~
 
 # Fichiers de données
-data/
+vector_db/*
+!vector_db/.gitkeep
+
+inputs/*
+!inputs/.gitkeep
 
 # Jupyter Notebook
 .ipynb_checkpoints

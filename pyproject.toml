@@ -25,4 +25,6 @@ dependencies = [
     "pydantic>=2.9",
     "pydantic-ai-slim[mistral]",
     "logfire",
+    "sqlalchemy>=2.0.51",
+    "psycopg2-binary>=2.9.12",
 ]

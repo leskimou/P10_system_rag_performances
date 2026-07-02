@@ -35,10 +35,22 @@ EMBEDDING_BATCH_SIZE = 32           # Taille des lots pour l'API d'embedding
 # --- Configuration de la Recherche ---
 SEARCH_K = 5                        # Nombre de documents à récupérer par défaut
 
-# --- Configuration de la Base de Données ---
+# --- Configuration de la Base de Données (interactions du chatbot, SQLite) ---
 DATABASE_DIR = "database"
 DATABASE_FILE = os.path.join(DATABASE_DIR, "interactions.db")
 DATABASE_URL = f"sqlite:///{DATABASE_FILE}" # URL pour SQLAlchemy
+
+# --- Configuration PostgreSQL (données NBA importées depuis Excel) ---
+DB_HOST = os.getenv("DB_HOST")
+DB_PORT = os.getenv("DB_PORT")
+DB_NAME = os.getenv("DB_NAME")
+DB_USER = os.getenv("DB_USER")
+DB_PWD = os.getenv("DB_PWD")
+
+if all([DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PWD]):
+    POSTGRES_URL = f"postgresql+psycopg2://{DB_USER}:{DB_PWD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+else:
+    POSTGRES_URL = None
 
 # --- Configuration de l'Application ---
 APP_TITLE = "NBA Analyst AI"

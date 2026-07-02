@@ -16,6 +16,11 @@ if not MISTRAL_API_KEY:
 EMBEDDING_MODEL = "mistral-embed"
 MODEL_NAME = "mistral-small-latest" # Ou un autre modèle comme mistral-large-latest
 
+# --- Hyperparamètres du LLM (chatbot) ---
+LLM_TEMPERATURE = 0.2      # Créativité des réponses (0.0 = déterministe, 1.0 = créatif)
+LLM_TOP_P = 0.8            # Nucleus sampling : top-k n'est pas supporté par Mistral, top_p est l'équivalent
+LLM_MAX_TOKENS = 800       # Nombre maximum de tokens générés par réponse
+
 # --- Configuration de l'Indexation ---
 # INPUT_DATA_URL = os.getenv("INPUT_DATA_URL") # Décommentez si vous utilisez une URL
 INPUT_DIR = "inputs"                # Dossier pour les données sources après extraction

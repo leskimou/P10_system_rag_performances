@@ -13,7 +13,7 @@ from pydantic import ValidationError
 from pydantic_ai import Agent
 from pydantic_ai.models.mistral import MistralModel
 
-from .config import MODEL_NAME, SEARCH_K
+from .config import LLM_MAX_TOKENS, LLM_TEMPERATURE, LLM_TOP_P, MODEL_NAME, SEARCH_K
 from .schemas import RAGAnswer, RAGQuery, SearchResult
 from .vector_store import VectorStoreManager
 
@@ -73,7 +73,14 @@ def generate_answer(question: str, search_results: List[SearchResult]) -> str:
     )
     try:
         with logfire.span("generate_answer", question=query.question):
-            result = get_agent().run_sync(final_prompt)
+            result = get_agent().run_sync(
+                final_prompt,
+                model_settings={
+                    "temperature": LLM_TEMPERATURE,
+                    "top_p": LLM_TOP_P,
+                    "max_tokens": LLM_MAX_TOKENS,
+                },
+            )
         return result.output.answer
     except Exception as e:
         logging.error(f"Erreur lors de la génération de la réponse par l'agent: {e}")

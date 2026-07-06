@@ -27,4 +27,5 @@ dependencies = [
     "logfire",
     "sqlalchemy>=2.0.51",
     "psycopg2-binary>=2.9.12",
+    "langchain-community==0.3.21",
 ]

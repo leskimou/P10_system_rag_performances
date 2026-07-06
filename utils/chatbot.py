@@ -15,10 +15,14 @@ from pydantic_ai.models.mistral import MistralModel
 
 from .config import LLM_MAX_TOKENS, LLM_TEMPERATURE, LLM_TOP_P, MODEL_NAME, SEARCH_K
 from .schemas import RAGAnswer, RAGQuery, SearchResult
+from .sql_tool import query_nba_database
 from .vector_store import VectorStoreManager
 
 SYSTEM_PROMPT = """Tu es 'NBA Analyst AI', un assistant expert sur la ligue de basketball NBA.
 Ta mission est de répondre aux questions des fans en t'appuyant sur le contexte fourni.
+Si la question porte sur des statistiques chiffrées (classements, moyennes, totaux,
+comparaisons de stats de joueurs ou d'équipes), utilise l'outil `query_nba_stats` qui
+interroge la base de données des statistiques NBA, plutôt que de deviner un chiffre.
 
 ---
 {context_str}
@@ -37,6 +41,16 @@ def get_agent() -> Agent:
     global _agent
     if _agent is None:
         _agent = Agent(MistralModel(MODEL_NAME), output_type=RAGAnswer)
+
+        @_agent.tool_plain
+        def query_nba_stats(question: str) -> str:
+            """Interroge la base de données PostgreSQL des statistiques NBA (joueurs et
+            équipes) pour répondre à une question chiffrée : classements, moyennes,
+            comparaisons de stats, totaux, etc. À utiliser dès que la question porte sur
+            des chiffres ou des statistiques précises plutôt que sur du contexte général.
+            """
+            return query_nba_database(question)
+
     return _agent
 
 

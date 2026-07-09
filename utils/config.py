@@ -19,7 +19,7 @@ MODEL_NAME = "mistral-small-latest" # Ou un autre modèle comme mistral-large-la
 # --- Hyperparamètres du LLM (chatbot) ---
 LLM_TEMPERATURE = 0.2      # Créativité des réponses (0.0 = déterministe, 1.0 = créatif)
 LLM_TOP_P = 0.8            # Nucleus sampling : top-k n'est pas supporté par Mistral, top_p est l'équivalent
-LLM_MAX_TOKENS = 800       # Nombre maximum de tokens générés par réponse
+LLM_MAX_TOKENS = 1500      # Nombre maximum de tokens générés par réponse
 
 # --- Configuration de l'Indexation ---
 # INPUT_DATA_URL = os.getenv("INPUT_DATA_URL") # Décommentez si vous utilisez une URL
@@ -33,7 +33,7 @@ CHUNK_OVERLAP = 150                 # Chevauchement en *caractères*
 EMBEDDING_BATCH_SIZE = 32           # Taille des lots pour l'API d'embedding
 
 # --- Configuration de la Recherche ---
-SEARCH_K = 5                        # Nombre de documents à récupérer par défaut
+SEARCH_K = 3                        # Nombre de documents à récupérer par défaut
 
 # --- Configuration de la Base de Données (interactions du chatbot, SQLite) ---
 DATABASE_DIR = "database"

@@ -1,14 +1,14 @@
 """Évaluation de la qualité du RAG avec RAGAS (faithfulness, context_precision,
 context_recall, answer_relevancy).
 
-Le dataset (utils/ragas_dataset.json) contient les questions, réponses et
+Le dataset (ragas_part/ragas_dataset.json) contient les questions, réponses et
 contextes déjà générés par le chatbot (champs "answer" et "contexts", remplis
-via utils/ans_cont_recup_ragas.py), pour éviter de refaire les appels au
+via ragas_part/ans_cont_recup_ragas.py), pour éviter de refaire les appels au
 chatbot à chaque évaluation. Nécessite MISTRAL_API_KEY pour le LLM juge.
 
 Lancer avec :
 
-    uv run python utils/evaluate_ragas.py
+    uv run python ragas_part/evaluate_ragas.py
 
 Le LLM juge (mistral-large-latest) attend 90s et retente automatiquement sur 429.
 Les embeddings juges (utilisés par answer_relevancy) sont générés via l'API
@@ -19,6 +19,7 @@ import asyncio
 import json
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
@@ -47,6 +48,7 @@ from utils.config import MISTRAL_API_KEY
 sys.stdout.reconfigure(encoding="utf-8")
 
 DATASET_PATH = Path(__file__).parent / "ragas_dataset.json"
+LOG_PATH = Path(__file__).parent / "log_ragass.json"
 SCORE_THRESHOLD = 0.7
 _RETRY_WAIT = 90
 _MAX_RETRIES = 8
@@ -125,7 +127,7 @@ def load_dataset() -> EvaluationDataset:
     if missing:
         raise SystemExit(
             f"{len(missing)} question(s) sans réponse/contexte dans {DATASET_PATH}.\n"
-            "Lancez d'abord : uv run python utils/ans_cont_recup_ragas.py"
+            "Lancez d'abord : uv run python ragas_part/ans_cont_recup_ragas.py"
         )
 
     rows = [
@@ -172,7 +174,19 @@ def run_evaluation():
     return result.to_pandas()
 
 
-def report(df) -> bool:
+def compute_mean_scores(df) -> dict:
+    """Calcule la moyenne de chaque métrique RAGAS présente dans `df` (None si
+    toutes les valeurs sont NaN pour cette métrique)."""
+    means = {}
+    for m in _ALL_METRICS:
+        if m not in df.columns:
+            continue
+        scores = df[m].dropna()
+        means[m] = round(float(scores.mean()), 4) if not scores.empty else None
+    return means
+
+
+def report(df, means: dict) -> bool:
     cols = ["user_input"] + [m for m in _ALL_METRICS if m in df.columns]
     print(f"\n{'='*60}\nRapport RAGAS ({len(df)} questions)\n{'='*60}")
     print(df[cols].to_string(index=False))
@@ -180,13 +194,12 @@ def report(df) -> bool:
     print("\n--- Moyennes ---")
     all_pass = True
     for m in _ALL_METRICS:
-        if m not in df.columns:
+        if m not in means:
             continue
-        scores = df[m].dropna()
-        if scores.empty:
+        mean_score = means[m]
+        if mean_score is None:
             print(f"  {m:<25} N/A (toutes les valeurs sont NaN)")
             continue
-        mean_score = scores.mean()
         passed = mean_score >= SCORE_THRESHOLD
         all_pass = all_pass and passed
         status = "OK" if passed else "ECHEC"
@@ -195,13 +208,41 @@ def report(df) -> bool:
     return all_pass
 
 
+def log_run(means: dict, n_questions: int, success: bool, duration_seconds: float) -> None:
+    """Ajoute une entrée (date, durée, métriques, résultat) à `log_ragass.json`, en
+    conservant l'historique des exécutions précédentes."""
+    now = datetime.now()
+    entry = {
+        "date": now.strftime("%Y-%m-%d"),
+        "duration_seconds": round(duration_seconds, 2),
+        "n_questions": n_questions,
+        "metrics": means,
+        "score_threshold": SCORE_THRESHOLD,
+        "success": success,
+    }
+
+    history = []
+    if LOG_PATH.exists():
+        with open(LOG_PATH, encoding="utf-8") as f:
+            history = json.load(f)
+
+    history.append(entry)
+
+    with open(LOG_PATH, "w", encoding="utf-8") as f:
+        json.dump(history, f, ensure_ascii=False, indent=2)
+
+
 def main() -> int:
     if not MISTRAL_API_KEY:
         print("MISTRAL_API_KEY non défini. Définissez-le dans le fichier .env.")
         return 1
 
+    start = time.monotonic()
     df = run_evaluation()
-    success = report(df)
+    duration_seconds = time.monotonic() - start
+    means = compute_mean_scores(df)
+    success = report(df, means)
+    log_run(means, len(df), success, duration_seconds)
     return 0 if success else 1
 
 

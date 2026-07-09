@@ -1,18 +1,18 @@
-"""Remplit utils/ragas_dataset.json avec les réponses et contextes générés par le
+"""Remplit ragas_part/ragas_dataset.json avec les réponses et contextes générés par le
 chatbot pour chaque question, afin d'alimenter evaluate_ragas.py sans refaire les
 appels au modèle à chaque évaluation.
 
 Lancer avec :
 
-    uv run python utils/ans_cont_recup_ragas.py
+    uv run python ragas_part/ans_cont_recup_ragas.py
 """
 import json
 import sys
 import time
 from pathlib import Path
 
-# Permet de lancer ce fichier directement (uv run python utils/ans_cont_recup_ragas.py) :
-# sans ça, Python ajoute utils/ à sys.path au lieu de la racine du projet, et
+# Permet de lancer ce fichier directement (uv run python ragas_part/ans_cont_recup_ragas.py) :
+# sans ça, Python ajoute ragas_part/ à sys.path au lieu de la racine du projet, et
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from utils.chatbot import ask_with_context

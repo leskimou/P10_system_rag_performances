@@ -1,4 +1,4 @@
-# utils/sql_tool.py
+# Sql_db/sql_tool.py
 """Tool LangChain SQL : génère et exécute des requêtes SQL en lecture seule
 sur la base PostgreSQL des statistiques NBA (`teams`, `player_stats`), à
 partir d'une question en langage naturel.
@@ -10,7 +10,7 @@ from langchain_community.utilities import SQLDatabase
 from langchain_core.prompts import FewShotPromptTemplate, PromptTemplate
 from langchain_mistralai import ChatMistralAI
 
-from .config import MISTRAL_API_KEY, MODEL_NAME, POSTGRES_URL
+from utils.config import MISTRAL_API_KEY, MODEL_NAME, POSTGRES_URL
 
 MAX_ROWS = 30
 
@@ -44,6 +44,24 @@ FEW_SHOT_EXAMPLES = [
             "SELECT t.team_name, SUM(ps.n3pm)::float / NULLIF(SUM(ps.n3pa), 0) AS pct "
             "FROM player_stats ps JOIN teams t ON ps.team = t.team_code "
             "GROUP BY t.team_name ORDER BY pct DESC LIMIT 1;"
+        ),
+    },
+    {
+        "question": (
+            "Quelles sont les grandes tendances de la ligue cette saison en matière de "
+            "scoring, de passes et de rebonds ?"
+        ),
+        "query": (
+            "SELECT "
+            "SUM(pts)::float / SUM(gp) AS pts_per_game, "
+            "SUM(reb)::float / SUM(gp) AS reb_per_game, "
+            "SUM(oreb)::float / SUM(gp) AS oreb_per_game, "
+            "SUM(dreb)::float / SUM(gp) AS dreb_per_game, "
+            "SUM(ast)::float / SUM(gp) AS ast_per_game, "
+            "SUM(fgm)::float / NULLIF(SUM(fga), 0) AS fg_pct, "
+            "SUM(n3pm)::float / NULLIF(SUM(n3pa), 0) AS n3p_pct, "
+            "SUM(ftm)::float / NULLIF(SUM(fta), 0) AS ft_pct "
+            "FROM player_stats;"
         ),
     },
 ]

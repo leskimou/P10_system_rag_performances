@@ -10,13 +10,19 @@ Feuilles chargées :
 import datetime
 import re
 import sys
+from pathlib import Path
+
+# Permet de lancer ce fichier directement (python Sql_db/load_excel_to_db.py) :
+# sans ça, Python ajoute Sql_db/ à sys.path au lieu de la racine du projet, et
+# `from utils.config import ...` échoue.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pandas as pd
 from sqlalchemy import create_engine
 
-from utils.config import INPUT_DIR, POSTGRES_URL
+from utils.config import POSTGRES_URL
 
-XLSX_FILE = f"{INPUT_DIR}/regular NBA.xlsx"
+XLSX_FILE = "regular_NBA.xlsx"
 
 # Excel a mal interprété l'en-tête "3PM" comme une heure (15:00 = 3PM).
 MISPARSED_TIME_COLUMN = datetime.time(15, 0)

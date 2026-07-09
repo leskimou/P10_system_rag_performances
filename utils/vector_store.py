@@ -17,8 +17,6 @@ from .config import (
 )
 from .schemas import Chunk, ChunkMetadata, CleanedDocument, EmbeddedChunk, RAGQuery, SearchResult
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
 class VectorStoreManager:
     """Gère la création, le chargement et la recherche dans un index Faiss."""
 

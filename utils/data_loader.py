@@ -75,9 +75,6 @@ except Exception as e:
     easyocr = None
     reader = None
 
-# Configuration du logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
 # --- Fonctions d'extraction de texte ---
 
 def extract_text_from_pdf_with_ocr(file_path: str) -> Optional[str]:

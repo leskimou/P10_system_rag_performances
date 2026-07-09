@@ -10,11 +10,6 @@ except ImportError as e:
     st.error(f"Erreur d'importation: {e}. Vérifiez la structure de vos dossiers et les fichiers dans 'utils'.")
     st.stop()
 
-
-# --- Configuration du Logging ---
-# Note: Streamlit peut avoir sa propre gestion de logs. Configurer ici est une bonne pratique.
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(module)s - %(message)s')
-
 model = MODEL_NAME
 
 if not MISTRAL_API_KEY:

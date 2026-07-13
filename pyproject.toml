@@ -29,3 +29,14 @@ dependencies = [
     "psycopg2-binary>=2.9.12",
     "langchain-community==0.3.21",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+markers = [
+    "integration: nécessite des identifiants réels (MISTRAL_API_KEY / POSTGRES_URL) ; skippé automatiquement si absents",
+]

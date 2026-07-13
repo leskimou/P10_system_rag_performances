@@ -93,7 +93,7 @@ if prompt := st.chat_input(f"Posez votre question sur la {NAME}..."):
         message_placeholder.text("...") # Indicateur simple
 
         try:
-            response_content = generate_answer(prompt, search_results)
+            response_content, _ = generate_answer(prompt, search_results)
         except Exception as e:
             st.error(f"Erreur lors de l'appel à l'API Mistral: {e}")
             logging.exception("Erreur API Mistral pendant generate_answer")

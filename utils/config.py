@@ -28,7 +28,7 @@ VECTOR_DB_DIR = "vector_db"         # Dossier pour stocker l'index Faiss et les 
 FAISS_INDEX_FILE = os.path.join(VECTOR_DB_DIR, "faiss_index.idx")
 DOCUMENT_CHUNKS_FILE = os.path.join(VECTOR_DB_DIR, "document_chunks.pkl")
 
-CHUNK_SIZE = 1500                   # Taille des chunks en *caractères* (vise ~512 tokens)
+CHUNK_SIZE = 1500                  # Taille des chunks en *caractères* (vise ~512 tokens)
 CHUNK_OVERLAP = 150                 # Chevauchement en *caractères*
 EMBEDDING_BATCH_SIZE = 32           # Taille des lots pour l'API d'embedding
 

@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install run index load-db ragas-dataset ragas-eval test clean
+.PHONY: help install run index load-db ragas-dataset ragas-eval ragas-refresh test clean
 
 help: ## Affiche la liste des commandes disponibles
 	@echo "Commandes disponibles :"
@@ -9,6 +9,7 @@ help: ## Affiche la liste des commandes disponibles
 	@echo "  make load-db       Charge regular_NBA.xlsx dans la base PostgreSQL"
 	@echo "  make ragas-dataset Genere les reponses/contextes du dataset RAGAS"
 	@echo "  make ragas-eval    Evalue le pipeline RAG avec RAGAS"
+	@echo "  make ragas-refresh Reindexe, regenere le dataset RAGAS et relance l'evaluation"
 	@echo "  make test          Lance tous les tests (unitaires, fonctionnels, integration)"
 	@echo "  make clean         Supprime les caches Python (__pycache__)"
 
@@ -29,6 +30,8 @@ ragas-dataset: ## Regenere les reponses/contextes du dataset RAGAS
 
 ragas-eval: ## Lance l'evaluation RAGAS du pipeline RAG
 	uv run python ragas_part/evaluate_ragas.py
+
+ragas-refresh: index ragas-dataset ragas-eval ## Reindexe, regenere le dataset RAGAS et relance l'evaluation
 
 test: ## Lance tous les tests (unitaires, fonctionnels, integration)
 	uv run pytest tests/ -v

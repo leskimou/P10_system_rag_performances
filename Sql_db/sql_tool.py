@@ -179,7 +179,10 @@ def execute_sql_query(query: str) -> str:
     catchée et retournée comme message lisible plutôt que de lever une exception.
     """
     try:
-        result = get_db().run(query)
+        # include_columns=True : renvoie des lignes {colonne: valeur} plutôt que des
+        # tuples positionnels nus, pour que ce texte reste interprétable une fois sorti
+        # de son contexte (utilisé tel quel comme contexte RAGAS pour faithfulness).
+        result = get_db().run(query, include_columns=True)
     except Exception as e:
         logging.error(f"Erreur lors de l'exécution de la requête SQL générée: {e}")
         return f"Erreur lors de l'exécution de la requête SQL : {e}"

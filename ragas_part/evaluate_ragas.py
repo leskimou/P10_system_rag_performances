@@ -19,9 +19,10 @@ import asyncio
 import json
 import sys
 import time
-from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
+
+import logfire
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -48,7 +49,6 @@ from utils.config import MISTRAL_API_KEY
 sys.stdout.reconfigure(encoding="utf-8")
 
 DATASET_PATH = Path(__file__).parent / "ragas_dataset.json"
-LOG_PATH = Path(__file__).parent / "log_ragass.json"
 SCORE_THRESHOLD = 0.7
 _RETRY_WAIT = 90
 _MAX_RETRIES = 8
@@ -209,27 +209,16 @@ def report(df, means: dict) -> bool:
 
 
 def log_run(means: dict, n_questions: int, success: bool, duration_seconds: float) -> None:
-    """Ajoute une entrée (date, durée, métriques, résultat) à `log_ragass.json`, en
-    conservant l'historique des exécutions précédentes."""
-    now = datetime.now()
-    entry = {
-        "date": now.strftime("%Y-%m-%d"),
-        "duration_seconds": round(duration_seconds, 2),
-        "n_questions": n_questions,
-        "metrics": means,
-        "score_threshold": SCORE_THRESHOLD,
-        "success": success,
-    }
-
-    history = []
-    if LOG_PATH.exists():
-        with open(LOG_PATH, encoding="utf-8") as f:
-            history = json.load(f)
-
-    history.append(entry)
-
-    with open(LOG_PATH, "w", encoding="utf-8") as f:
-        json.dump(history, f, ensure_ascii=False, indent=2)
+    """Émet un log structuré Logfire pour ce run d'évaluation RAGAS (visible et
+    filtrable dans l'interface Logfire : par run, par métrique, par succès/échec)."""
+    logfire.info(
+        "ragas_evaluation_run",
+        n_questions=n_questions,
+        duration_seconds=round(duration_seconds, 2),
+        score_threshold=SCORE_THRESHOLD,
+        success=success,
+        **means,
+    )
 
 
 def main() -> int:

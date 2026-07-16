@@ -1,4 +1,4 @@
-"""Charge le fichier inputs/regular NBA.xlsx dans une base PostgreSQL.
+"""Charge le fichier inputs/regular_NBA.xlsx dans une base PostgreSQL.
 
 Feuilles chargées :
 - "Données NBA" -> table `player_stats` (stats saison régulière par joueur)
@@ -22,7 +22,7 @@ from sqlalchemy import create_engine
 
 from utils.config import POSTGRES_URL
 
-XLSX_FILE = "regular_NBA.xlsx"
+XLSX_FILE = Path(__file__).resolve().parent.parent / "inputs" / "regular_NBA.xlsx"
 
 # Excel a mal interprété l'en-tête "3PM" comme une heure (15:00 = 3PM).
 MISPARSED_TIME_COLUMN = datetime.time(15, 0)

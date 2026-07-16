@@ -10,11 +10,6 @@ except ImportError as e:
     st.error(f"Erreur d'importation: {e}. Vérifiez la structure de vos dossiers et les fichiers dans 'utils'.")
     st.stop()
 
-
-# --- Configuration du Logging ---
-# Note: Streamlit peut avoir sa propre gestion de logs. Configurer ici est une bonne pratique.
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(module)s - %(message)s')
-
 model = MODEL_NAME
 
 if not MISTRAL_API_KEY:
@@ -98,7 +93,7 @@ if prompt := st.chat_input(f"Posez votre question sur la {NAME}..."):
         message_placeholder.text("...") # Indicateur simple
 
         try:
-            response_content = generate_answer(prompt, search_results)
+            response_content, _ = generate_answer(prompt, search_results)
         except Exception as e:
             st.error(f"Erreur lors de l'appel à l'API Mistral: {e}")
             logging.exception("Erreur API Mistral pendant generate_answer")

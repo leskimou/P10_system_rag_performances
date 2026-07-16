@@ -60,6 +60,72 @@ class TestQueryNbaDatabase:
 
         assert "pas pu générer" in result
 
+    def test_unparenthesized_union_all_arms_are_fixed_before_execution(self):
+        fake_db = make_fake_db(run_result="[('Lakers', 'Top 5 scoring', 118.2)]")
+        fake_llm = MagicMock()
+        fake_llm.invoke.return_value.content = (
+            "SELECT 'Top 5 scoring' AS category, t.team_name, "
+            "SUM(ps.pts)::float / SUM(ps.gp) AS pts_per_game "
+            "FROM player_stats ps JOIN teams t ON ps.team = t.team_code "
+            "GROUP BY t.team_name ORDER BY pts_per_game DESC LIMIT 5 "
+            "UNION ALL "
+            "SELECT 'Bottom 5 scoring' AS category, t.team_name, "
+            "SUM(ps.pts)::float / SUM(ps.gp) AS pts_per_game "
+            "FROM player_stats ps JOIN teams t ON ps.team = t.team_code "
+            "GROUP BY t.team_name ORDER BY pts_per_game ASC LIMIT 5"
+        )
+
+        with patch("Sql_db.sql_tool.get_db", return_value=fake_db), patch(
+            "Sql_db.sql_tool.get_sql_llm", return_value=fake_llm
+        ):
+            result = query_nba_database("Quelles sont les 5 meilleures et 5 pires équipes en scoring ?")
+
+        assert result == "[('Lakers', 'Top 5 scoring', 118.2)]"
+        executed_query = fake_db.run.call_args[0][0]
+        assert executed_query.startswith("(SELECT 'Top 5 scoring'")
+        assert "LIMIT 5) UNION ALL (SELECT 'Bottom 5 scoring'" in executed_query
+
+    def test_redundant_select_wrapper_around_union_arms_is_fixed_before_execution(self):
+        fake_db = make_fake_db(run_result="[('Lakers', 'Top 5 rebonds', 45.1)]")
+        fake_llm = MagicMock()
+        fake_llm.invoke.return_value.content = (
+            "SELECT (SELECT 'Top 5 rebonds' AS category, t.team_name, "
+            "SUM(ps.reb)::float / SUM(ps.gp) AS value "
+            "FROM player_stats ps JOIN teams t ON ps.team = t.team_code "
+            "GROUP BY t.team_name ORDER BY value DESC LIMIT 5) "
+            "UNION ALL "
+            "(SELECT 'Bottom 5 rebonds' AS category, t.team_name, "
+            "SUM(ps.reb)::float / SUM(ps.gp) AS value "
+            "FROM player_stats ps JOIN teams t ON ps.team = t.team_code "
+            "GROUP BY t.team_name ORDER BY value ASC LIMIT 5)"
+        )
+
+        with patch("Sql_db.sql_tool.get_db", return_value=fake_db), patch(
+            "Sql_db.sql_tool.get_sql_llm", return_value=fake_llm
+        ):
+            result = query_nba_database("Quelles sont les 5 meilleures et pires équipes au rebond ?")
+
+        assert result == "[('Lakers', 'Top 5 rebonds', 45.1)]"
+        executed_query = fake_db.run.call_args[0][0]
+        assert executed_query.startswith("(SELECT 'Top 5 rebonds'")
+        assert "UNION ALL (SELECT 'Bottom 5 rebonds'" in executed_query
+
+    def test_round_on_double_precision_expression_is_cast_before_execution(self):
+        fake_db = make_fake_db(run_result="[('avg_ast', 6.4)]")
+        fake_llm = MagicMock()
+        fake_llm.invoke.return_value.content = (
+            "SELECT ROUND(SUM(ps.ast)::float / SUM(ps.gp), 1) AS avg_ast FROM player_stats ps"
+        )
+
+        with patch("Sql_db.sql_tool.get_db", return_value=fake_db), patch(
+            "Sql_db.sql_tool.get_sql_llm", return_value=fake_llm
+        ):
+            result = query_nba_database("Quelle est la moyenne de passes décisives par match ?")
+
+        assert result == "[('avg_ast', 6.4)]"
+        executed_query = fake_db.run.call_args[0][0]
+        assert "ROUND((SUM(ps.ast)::float / SUM(ps.gp))::numeric, 1)" in executed_query
+
     def test_execution_error_returns_readable_message(self):
         fake_db = make_fake_db()
         fake_db.run.side_effect = RuntimeError("connexion refusée")

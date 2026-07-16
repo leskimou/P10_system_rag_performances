@@ -64,6 +64,20 @@ FEW_SHOT_EXAMPLES = [
             "FROM player_stats;"
         ),
     },
+    {
+        "question": "Quelles sont les 3 meilleures et les 3 moins bonnes équipes en scoring ?",
+        "query": (
+            "(SELECT 'Top 3 scoring' AS category, t.team_name, "
+            "SUM(ps.pts)::float / SUM(ps.gp) AS value "
+            "FROM player_stats ps JOIN teams t ON ps.team = t.team_code "
+            "GROUP BY t.team_name ORDER BY value DESC LIMIT 3) "
+            "UNION ALL "
+            "(SELECT 'Bottom 3 scoring' AS category, t.team_name, "
+            "SUM(ps.pts)::float / SUM(ps.gp) AS value "
+            "FROM player_stats ps JOIN teams t ON ps.team = t.team_code "
+            "GROUP BY t.team_name ORDER BY value ASC LIMIT 3);"
+        ),
+    },
 ]
 
 _EXAMPLE_PROMPT = PromptTemplate.from_template("Question: {question}\nSQLQuery: {query}")
@@ -83,6 +97,9 @@ Règles :
   de te baser sur la statistique d'un seul joueur. Pour un pourcentage de réussite
   (tirs, lancers-francs, 3 points), calcule toujours le ratio somme(réussites) /
   somme(tentatives) sur le groupe plutôt qu'une moyenne des pourcentages individuels.
+- Si tu combines plusieurs SELECT avec UNION ou UNION ALL et que certains ont leur propre
+  ORDER BY / LIMIT, mets systématiquement chaque SELECT entre parenthèses (PostgreSQL
+  rejette un ORDER BY/LIMIT suivi de UNION sans parenthèses).
 
 Schéma de la base de données :
 {table_info}
@@ -142,12 +159,181 @@ def clean_sql_query(raw_text: str) -> str:
     return query.strip().rstrip(";").strip()
 
 
+def _iter_top_level_matches(text: str, delimiter_re: re.Pattern):
+    """Parcourt `text` et produit les spans (start, end) où `delimiter_re` matche
+    en dehors de toute parenthèse et de tout littéral de chaîne ('...')."""
+    depth = 0
+    in_string = False
+    i = 0
+    n = len(text)
+    while i < n:
+        c = text[i]
+        if in_string:
+            if c == "'":
+                in_string = False
+            i += 1
+            continue
+        if c == "'":
+            in_string = True
+            i += 1
+            continue
+        if c == "(":
+            depth += 1
+            i += 1
+            continue
+        if c == ")":
+            depth -= 1
+            i += 1
+            continue
+        if depth == 0:
+            match = delimiter_re.match(text, i)
+            if match:
+                yield match.start(), match.end()
+                i = match.end()
+                continue
+        i += 1
+
+
+def _split_top_level(text: str, delimiter_re: re.Pattern) -> tuple[list[str], list[str]]:
+    """Découpe `text` sur les occurrences de premier niveau de `delimiter_re`, en
+    conservant le texte exact de chaque séparateur."""
+    parts: list[str] = []
+    seps: list[str] = []
+    start = 0
+    for span_start, span_end in _iter_top_level_matches(text, delimiter_re):
+        parts.append(text[start:span_start])
+        seps.append(text[span_start:span_end])
+        start = span_end
+    parts.append(text[start:])
+    return parts, seps
+
+
+def _find_matching_paren(text: str, open_idx: int) -> int:
+    """Retourne l'index de la parenthèse fermante correspondant à `text[open_idx]`
+    (qui doit être '('), en ignorant les parenthèses dans les littéraux de chaîne."""
+    depth = 0
+    in_string = False
+    i = open_idx
+    n = len(text)
+    while i < n:
+        c = text[i]
+        if in_string:
+            if c == "'":
+                in_string = False
+        elif c == "'":
+            in_string = True
+        elif c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    return -1
+
+
+_UNION_RE = re.compile(r"\bUNION\b(\s+ALL\b)?", re.IGNORECASE)
+_NEEDS_PARENS_RE = re.compile(r"\b(ORDER\s+BY|LIMIT)\b", re.IGNORECASE)
+
+
+def normalize_union_parentheses(query: str) -> str:
+    """Enveloppe chaque SELECT combiné par UNION/UNION ALL entre parenthèses dès
+    qu'il a son propre ORDER BY ou LIMIT.
+
+    PostgreSQL rejette un ORDER BY/LIMIT suivi de UNION si le SELECT qui les
+    contient n'est pas parenthésé ; le LLM de génération SQL ne respecte pas
+    toujours cette règle malgré la consigne donnée dans le prompt, d'où cette
+    correction déterministe appliquée après coup.
+    """
+    parts, seps = _split_top_level(query, _UNION_RE)
+    if not seps:
+        return query
+
+    normalized_parts = []
+    for part in parts:
+        stripped = part.strip()
+        if stripped.startswith("(") and stripped.endswith(")"):
+            normalized_parts.append(stripped)
+        elif _NEEDS_PARENS_RE.search(stripped):
+            normalized_parts.append(f"({stripped})")
+        else:
+            normalized_parts.append(stripped)
+
+    pieces = [normalized_parts[0]]
+    for sep, part in zip(seps, normalized_parts[1:]):
+        pieces.append(sep.strip())
+        pieces.append(part)
+    return " ".join(pieces)
+
+
+_LEADING_SELECT_PAREN_RE = re.compile(r"^\s*SELECT\s+(?=\()", re.IGNORECASE)
+
+
+def strip_redundant_outer_select(query: str) -> str:
+    """Retire un "SELECT" superflu placé avant un premier bloc "(SELECT ...)
+    UNION ALL (SELECT ...)", que le LLM ajoute parfois par confusion avec le
+    motif "SELECT (sous-requête scalaire) AS alias".
+
+    Ce "SELECT" en trop transforme la première branche de l'UNION en une
+    sous-requête scalaire dans la liste de colonnes, ce que PostgreSQL rejette
+    dès que cette sous-requête renvoie plusieurs colonnes ("la sous-requête
+    doit renvoyer une seule colonne").
+    """
+    match = _LEADING_SELECT_PAREN_RE.match(query)
+    if not match:
+        return query
+
+    remainder = query[match.end():]
+    parts, seps = _split_top_level(remainder, _UNION_RE)
+    if not seps:
+        return query
+    if all(p.strip().startswith("(") and p.strip().endswith(")") for p in parts):
+        return remainder.strip()
+    return query
+
+
+_ROUND_CALL_RE = re.compile(r"\bROUND\s*(?=\()", re.IGNORECASE)
+_COMMA_RE = re.compile(r",")
+
+
+def cast_round_args_to_numeric(query: str) -> str:
+    """Caste en `::numeric` le premier argument de tout appel `ROUND(x, n)` à deux
+    arguments qui ne l'est pas déjà.
+
+    PostgreSQL n'a pas de surcharge `round(double precision, integer)` : seule
+    `round(numeric, integer)` existe, or les agrégats du schéma (`SUM(...)::float
+    / SUM(...)`) produisent du `double precision`, d'où l'erreur récurrente
+    "la fonction round(double precision, integer) n'existe pas".
+    """
+    pieces = []
+    pos = 0
+    for match in _ROUND_CALL_RE.finditer(query):
+        open_idx = match.end()
+        if open_idx < pos:
+            continue
+        close_idx = _find_matching_paren(query, open_idx)
+        if close_idx == -1:
+            continue
+        inner = query[open_idx + 1 : close_idx]
+        args, _ = _split_top_level(inner, _COMMA_RE)
+        if len(args) == 2 and "::numeric" not in args[0].lower():
+            pieces.append(query[pos:match.start()])
+            pieces.append(f"ROUND(({args[0].strip()})::numeric, {args[1].strip()})")
+            pos = close_idx + 1
+    pieces.append(query[pos:])
+    return "".join(pieces)
+
+
 def generate_sql_query(question: str) -> str:
     """Génère une requête SQL pour répondre à `question`, via le LLM dédié."""
     db = get_db()
     prompt = build_sql_generation_prompt(question, db)
     response = get_sql_llm().invoke(prompt)
-    return clean_sql_query(response.content)
+    query = clean_sql_query(response.content)
+    query = strip_redundant_outer_select(query)
+    query = normalize_union_parentheses(query)
+    query = cast_round_args_to_numeric(query)
+    return query
 
 
 _FORBIDDEN_KEYWORDS_RE = re.compile(
@@ -158,7 +344,7 @@ _FORBIDDEN_KEYWORDS_RE = re.compile(
 def is_safe_select(query: str) -> bool:
     """True si `query` est un unique SELECT sans mot-clé de modification de données/schéma."""
     stripped = query.strip()
-    if not re.match(r"^SELECT\b", stripped, re.IGNORECASE):
+    if not re.match(r"^\(?\s*SELECT\b", stripped, re.IGNORECASE):
         return False
     if _FORBIDDEN_KEYWORDS_RE.search(stripped):
         return False

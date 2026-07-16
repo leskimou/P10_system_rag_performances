@@ -5,6 +5,10 @@ une recherche sémantique (RAG) sur une base documentaire (articles, retours d'e
 et un accès en langage naturel à une base de statistiques NBA (PostgreSQL), le tout
 piloté par un agent [Pydantic AI](https://ai.pydantic.dev/) appuyé sur les modèles Mistral.
 
+<p align="center">
+  <img src="docs/Diagrammeopc.drawio.png" alt="Diagramme OPC">
+</p>
+
 ## Fonctionnalités
 
 - 🔍 **Recherche sémantique** avec FAISS sur une base documentaire (PDF, notes, etc.)
@@ -12,6 +16,8 @@ piloté par un agent [Pydantic AI](https://ai.pydantic.dev/) appuyé sur les mod
 - 🤖 **Génération de réponses structurées** avec les modèles Mistral, via un agent Pydantic AI
 - 📊 **Évaluation continue de la qualité** du RAG avec RAGAS (faithfulness, context precision/recall, answer relevancy)
 - 📈 **Observabilité** des appels LLM et du pipeline via Pydantic Logfire
+
+> 📄 Les résultats d'évaluation RAGAS (scores par itération) et leur interprétation sont disponibles dans le [rapport d'évaluation](rapport_deval.ipynb).
 
 ## Architecture cible
 
@@ -48,6 +54,7 @@ l'évaluation RAGAS pour rester représentatif de ce que voit l'utilisateur fina
 | `ragas_part/ans_cont_recup_ragas.py` | Génère réponses et contextes pour chaque question de `ragas_part/ragas_dataset.json` en appelant le pipeline réel (`ask_with_context`). |
 | `ragas_part/evaluate_ragas.py` | Évalue la qualité du RAG avec RAGAS sur le dataset généré et journalise les scores dans Logfire. |
 | `tests/` | Tests unitaires (`tests/unit`), fonctionnels (`tests/functional`) et d'intégration (`tests/integration`, nécessitent des identifiants réels). |
+| `rapport_deval.ipynb` | Rapport d'évaluation : évolution des scores RAGAS entre itérations, améliorations apportées au système et interprétation des résultats. |
 
 ## Installation et reproductibilité
 
@@ -206,18 +213,10 @@ Chaque métrique est comparée à un seuil (`SCORE_THRESHOLD = 0.7`) ; le résul
 run (moyennes, succès/échec, durée) est journalisé dans Logfire (`ragas_evaluation_run`) pour
 suivre la qualité du RAG dans le temps.
 
-#### Évolution des scores RAGAS (moyennes globales, 15 questions)
-
-| Étape | faithfulness | context precision | context recall | answer relevancy |
-|---|---|---|---|---|
-| Prototype initial | 0.392 | 0.122 | 0.060 | 0.365 |
-| Après sécurisation des routes + schémas Pydantic | 0.594 | 0.089 | 0.163 | 0.624 |
-| Meilleur résultat (version actuelle) | 0.504 | 0.317 | 0.344 | 0.939 |
-
-Aucun run n'atteint encore le seuil de succès (`SCORE_THRESHOLD = 0.7`) sur les quatre
-métriques simultanément, mais l'`answer_relevancy` dépasse désormais nettement ce seuil et
-les scores de `context_precision`/`context_recall` progressent régulièrement au fil des
-itérations.
+**Résultats et interprétation** : l'évolution des scores RAGAS au fil des itérations, le détail
+des améliorations apportées à chaque étape et l'interprétation des résultats (points forts,
+points faibles, pistes d'amélioration) sont documentés dans
+[`rapport_deval.ipynb`](rapport_deval.ipynb).
 
 ### Personnalisation
 
